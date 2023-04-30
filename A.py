@@ -4,7 +4,7 @@ an algorithm to compute guaranteed estimates for the expectation
 of random variables defined by probabilistic programs. It is 
 based on a small-step semantics for probabilistic programming
 described in: 'Guaranteed inference for probabilistic programs:
-a small-step operational approach', the guaratees are given in the
+a small-step operational approach', guarantees are given in the
 form of confidence intervals.
 
 
