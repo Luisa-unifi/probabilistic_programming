@@ -2,10 +2,10 @@
 Python proof-of-concept SIMD-parallel implementation of A,
 an algorithm to compute guaranteed estimates for the expectation
 of random variables defined by probabilistic programs. It exploits 
-Importance Sampling to limit the rejections problem and is based 
+importance sampling to limit the rejections problem and is based 
 on a small-step semantics for probabilistic programming 
 described in: 'Guaranteed inference for probabilistic programs: 
-a small-step operational approach',  the guaratees are given in 
+a small-step operational approach', guarantees are given in 
 the form of confidence intervals.
 
 
