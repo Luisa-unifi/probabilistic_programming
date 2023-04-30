@@ -468,8 +468,6 @@ TrueSkill = seq(
 V,P=iter_transition(TrueSkill,skillA,[skillA, skillB, skillC,perfA1,perfB1,perfB2, perfC2,perfA3,perfC3],11,100000,vers=2)
 
 
-
-
 #------------------ Example 3: Random walks
 
 var('y u i term')
