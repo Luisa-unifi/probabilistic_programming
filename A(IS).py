@@ -475,8 +475,6 @@ BA = seq(bern(earthquake,0.001),
 semPP_3_r(BA,burglary,delta=0.001/8,N=1000000,k=20,maxe=1)
 
 
-
-
 #------------------ Example 2: TrueSkill model
 
 
