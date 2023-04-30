@@ -435,7 +435,7 @@ BA = seq(bern(earthquake,0.001),
             )
 
 # computation of the confidence interval for the expected value of r.v. burglary
-V,P=iter_transition(BA,burglary,[earthquake, burglary, phoneWorking, maryWakes],10,1000000,vers=2)
+V,P=iter_transition(BA,burglary,[earthquake, burglary, phoneWorking, maryWakes],10,100000,vers=2)
 
  
 #------------------ Example 2: TrueSkill model
@@ -465,7 +465,7 @@ TrueSkill = seq(
                 )
 
 # computation of the confidence interval for the expected value of r.v. skillA
-V,P=iter_transition(TrueSkill,skillA,[skillA, skillB, skillC,perfA1,perfB1,perfB2, perfC2,perfA3,perfC3],11,500000,vers=2)
+V,P=iter_transition(TrueSkill,skillA,[skillA, skillB, skillC,perfA1,perfB1,perfB2, perfC2,perfA3,perfC3],11,100000,vers=2)
 
 
 
@@ -476,11 +476,11 @@ var('y u i term')
 
 RW1 = seq(drawv(u,U(0,1)), whl((y < 1)&(y>-1), seq(drawv(y, G(y, 2*u)), setv(i, i + 1))))
 # computation of the confidence interval for the expected value of r.v. i>=3
-V,P=iter_transition(RW1,i>=3,[y,i,u],200,100000,eps=.005,vers=2)
+V,P=iter_transition(RW1,i>=3,[y,i,u],200,10000,eps=.005,vers=2)
 
 # computation of the confidence interval for the expected value of r.v. u
 RW2 = seq(drawv(u,U(0,1)), whl((y < 1)&(y>-1), seq(drawv(y, G(y, 2*u)), setv(i, i + 1))), obs(i>=3))
-V,P=iter_transition(RW2,u,[y,i,u],200,100000,eps=.005,vers=2)
+V,P=iter_transition(RW2,u,[y,i,u],200,10000,eps=.005,vers=2)
 
 
 
