@@ -2,7 +2,7 @@
 Python proof-of-concept SIMD-parallel implementation of A,
 an algorithm to compute guaranteed estimates for the expectation
 of random variables defined by probabilistic programs. It exploits 
-importance sampling to limit the rejections problem and is based 
+Importance Sampling to limit the rejections problem and is based 
 on a small-step semantics for probabilistic programming 
 described in: 'Guaranteed inference for probabilistic programs: 
 a small-step operational approach', guarantees are given in 
@@ -89,7 +89,16 @@ def termination(S):
         return all([termination(p) for p in pList])
     
 
-def collectS_s(e,drawList,term,S,k=10,simp=False):  # collecting semantics of statements S; e=expression in the program variables (represents f); psi=logical formula in the program variables
+def collectS_s(e,drawList,term,S,k=10,simp=False):
+    '''
+    It collects semantics of statements S, and defines a new variable for each random variable of the program.
+    It takes in input:
+        - e: random variable for which we are interested in obtaining 
+             guarantees on the expected value.
+        - drawlist: statements collected so far.
+        - term: condition value.
+        - S: considered model.          
+    '''
     if k==0:
         return [(e,drawList,termination(S))]
     op=S.func
@@ -138,6 +147,13 @@ def collectS_s(e,drawList,term,S,k=10,simp=False):  # collecting semantics of st
 
 
 def preprocessBranch(drawList,simp=False):
+    '''
+   It preprocesses the considered program incorporating conditions into individual statements.
+   It takes in input:
+       - drawList: list of statements.
+
+    '''
+    
     varorder=[]
     indicesDL={}
     for e,j in zip(drawList,range(len(drawList))):
@@ -166,8 +182,6 @@ def preprocessBranch(drawList,simp=False):
 
 
 
-
-################ for (optional) static bound analysis ################
 def int2iv(R):
     '''
     Returns a representation of rectangle R as a list of intervals in the mpmath Python library.
@@ -177,7 +191,7 @@ def int2iv(R):
 import numbers
 def iv2intv(Iv):
     '''
-    Inverts rectangle representation from mpmath to Python
+    Inverts rectangle representation from mpmath to Python.
     '''
     i=0
     for z in Iv:
@@ -187,7 +201,7 @@ def iv2intv(Iv):
         i=i+1
     return [ [float(z.a),float(z.b)] for z in Iv ]
 
-def findBoundW_A(dL,varorder,e=One,baseIntv=[0,1],truncL=-np.inf,truncR=np.inf): #finds static bound on variation of e(x)*weight(x)
+def findBoundW_A(dL,varorder,e=One,baseIntv=[0,1],truncL=-np.inf,truncR=np.inf):
     k=len(varorder)
     rangevar=[baseIntv]*k
     minL=1
@@ -228,7 +242,7 @@ def findBoundW_A(dL,varorder,e=One,baseIntv=[0,1],truncL=-np.inf,truncR=np.inf):
             else:
                 lowerW=0
                 minL=0
-                rangevar[idx]=[truncL,truncR]#[stats.norm.ppf(deltatail,loc=loc,scale=sc),stats.norm.ppf(1-deltatail,loc=loc,scale=sc)]
+                rangevar[idx]=[truncL,truncR]
         else:
             print("Distribution not supported")
             return None
@@ -243,7 +257,6 @@ def findBoundW_A(dL,varorder,e=One,baseIntv=[0,1],truncL=-np.inf,truncR=np.inf):
     Up=min(maxU*truncR,float(Up))
     return Up-Lo       
 
-######## Distributions  #####################
 var('z')
 log_cdfG=  lambda*x: np.log(stats.norm.cdf(x=x[3],loc=x[0],scale=x[1])-stats.norm.cdf(x=x[2],loc=x[0],scale=x[1]))
 trunc_norm=lambda*x: truncnorm.rvs(a=(x[2]-x[0])/x[1],b=(x[3]-x[0])/x[1],loc=x[0],scale=x[1])
@@ -255,15 +268,17 @@ KG = sqrt(2*pi)
 def gauss(x,mu,var):
     return gauss_u(x,mu,var)/NKG
 
-mymathmodule=[{'log':np.log,'exp':np.exp, 'sqrt':np.sqrt,'pi':np.pi,'e':np.e,'G':gauss,'Min':np.minimum, 'Max':np.maximum}]#,"mpmath"]
+mymathmodule=[{'log':np.log,'exp':np.exp, 'sqrt':np.sqrt,'pi':np.pi,'e':np.e,'G':gauss,'Min':np.minimum, 'Max':np.maximum}]
 
 
-####### Importance Sampling from Markov chain ###############
 def Ns(delta,epsilon,dF):
     return int(np.ceil(dF**2*log(2/delta)/(2*epsilon**2)))
 
 
-def solveIneqSymb(phi,u,f=G):  # phi is a conjunction of linear inequalities of the form a1*u+b1<=(<,>,>=)a2*u+b2 
+def solveIneqSymb(phi,u,f=G):  
+    '''
+    It returns upper and lower bound for f, satisfying phi.
+    '''
     if f==U:
         LL=0
         UL=1
@@ -309,6 +324,13 @@ def solveIneqSymb(phi,u,f=G):  # phi is a conjunction of linear inequalities of 
 
 
 def sequentialRejection_vect(e,drawList,varorder=None,delta=None,N=10,maxe=1):
+    '''
+    It implements importance sampling and computes Empirical Bernstein error bounds.
+    It takes in input:
+        - e: r.v. that we are interested in.
+        - drawlist: statements of the considered program.
+    '''
+    
     start_time=time.time()
     if varorder==None:
         varorder=[ ee.args[0] for ee in drawList]
@@ -373,6 +395,16 @@ def sequentialRejection_vect(e,drawList,varorder=None,delta=None,N=10,maxe=1):
 
 
 def semPP_3_r(P,e,delta=0.001,N=100,maxe=1,k=7,simp=False,optbound=False,epsilon=.01,truncL=0,truncR=1,baseIntv=[0,1]):
+    '''
+    It computes the exact confidence interval of e with a given confidence eps:
+       - P: model describing the probabilistic program we are
+           studying.
+       - e: random variable for which we are interested in obtaining 
+            guarantees on the expected value.
+       - delta: small positive number, s.t. eps= 1-delta is the
+                confidence of the interval returned by the function.
+       - N: number of samples for MC estimation.
+    '''
     start_time=time.time()
     global varcount
     varcount=0
@@ -402,7 +434,7 @@ def semPP_3_r(P,e,delta=0.001,N=100,maxe=1,k=7,simp=False,optbound=False,epsilon
                 else:
                     Hoeff=True
                     print('   *N. of samples from Hoeffding with given epsilon and delta =*',N0)                        
-            vnum, vden,  eveb_num, eveb_den = sequentialRejection_vect(e0,dL,varorder=vo,delta=delta,N=N0,maxe=maxe)#sequentialRejection_C(e0,dL,varorder=vo,N=Nnum,weightbranch=weightbranch,delta=delta,epsilon=epsNum,baseIntv=baseIntv,splitting=splitting,truncL=truncL,truncR=truncR)
+            vnum, vden,  eveb_num, eveb_den = sequentialRejection_vect(e0,dL,varorder=vo,delta=delta,N=N0,maxe=maxe)
             if vden>0:
                 if N0==1:
                     pass
@@ -437,7 +469,7 @@ def semPP_3_r(P,e,delta=0.001,N=100,maxe=1,k=7,simp=False,optbound=False,epsilon
     return num/den,ci,delta*nbranch
 
 
-def bern(x,e=1/2,vL=[0,1]):   # Bernoulli with success prob. e (expression)
+def bern(x,e=1/2,vL=[0,1]):
     S=seq(drawv(x,U()),ifte(x>=e,setv(x,vL[0]),setv(x,vL[1])))
     return S
 
@@ -475,6 +507,8 @@ BA = seq(bern(earthquake,0.001),
 semPP_3_r(BA,burglary,delta=0.001/8,N=1000000,k=20,maxe=1)
 
 
+
+
 #------------------ Example 2: TrueSkill model
 
 
@@ -502,4 +536,6 @@ TrueSkill = seq(
                 )
 # computation of the confidence interval for the expected value of r.v. skillA
 semPP_3_r(TrueSkill,skillA,delta=0.001/2,N=5000,k=10,maxe=1.3)
+
+
 
