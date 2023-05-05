@@ -15,9 +15,9 @@ The main function is:
              - S: model describing the probabilistic program we are
                  studying.
              - e: random variable for which we are interested in obtaining 
-                 guarantees on the expected value.
-             - xl:variables involved in the considered probabilistic model.
-             - T:length of paths considered in the computation.
+                  guarantees on the expected value.
+             - xl: variables involved in the considered probabilistic model.
+             - T: length of paths considered in the computation.
              - N: number of samples for MC estimation.
              - eps: confidence of the interval returned by the function.
             
@@ -61,6 +61,10 @@ trunc_norm=lambda*x: random.normal(loc=x[0],scale=x[1])
 uniform =  lambda*x: np.random.uniform(low=x[0],high=x[1])
 
 def discreteD(vals,probs):
+    '''
+    It is used to sample from a discrete distribution.
+
+    '''
     n=vals.shape[0]
     p_cum=probs.cumsum(axis=1)
     cum_v=p_cum[:,-1].reshape((n,1))
@@ -73,7 +77,6 @@ def discreteD(vals,probs):
     
 import time
 
-############# Translation from CSP-like to CCS-like language ###########
 varcount=0
 def newvar(name='u'):
     global varcount
@@ -82,6 +85,10 @@ def newvar(name='u'):
     return w
 
 def CSP2CCS(S,Sc,dc,thresh=0):
+    '''
+    It translates statements S from CSP-like to CCS-like language.
+
+    '''
     global varcount
     f=S.func
     if f==skip:
@@ -145,6 +152,14 @@ def CSP2CCS(S,Sc,dc,thresh=0):
 
 
 def transition_vectorized_CCS(v,p,xl,dc,v_new=None,p_new=None):
+    '''
+    It implements the transition step corresponding to the Markov kernel K.
+    It takes in input:
+        v: program's store.
+        p: control pointer, represented as a statement.
+        xl: variables involved in the considered probabilistic model.
+        dc: statements to be processed.
+    '''
     # Create array of masks for each program counter
     pc_set=set(np.concatenate(p)).difference({fail(),nil()})
     masks = np.zeros((len(pc_set), len(v)), dtype=bool)
@@ -209,6 +224,16 @@ def transition_vectorized_CCS(v,p,xl,dc,v_new=None,p_new=None):
 
 
 def transition_vectorized_CCS_2(v,p,xl,dc,v_new=None,p_new=None):
+    '''
+    It implements the transition step corresponding to the Markov kernel K.
+    It is an alternative version of 'transition_vectorized_CCS', 
+    using an unbounded while loop, instead of the for loop.
+    It takes in input:
+        v: program's store.
+        p: control pointer, represented as a statement.
+        xl: variables involved in the considered probabilistic model.
+        dc: statements to be processed.
+    '''
     mask0 = np.full((p[:,0].shape[0],), True)
     zz = np.zeros((len(v),1))
     if type(v_new)!=type(None):
@@ -243,11 +268,11 @@ def transition_vectorized_CCS_2(v,p,xl,dc,v_new=None,p_new=None):
                     fargs=lambdify(xl+[z],broad_args)
                     v_new[idx,i]=uniform(*fargs(*np.concatenate([v_new[mask],zz[mask]],axis=1).T))
                 elif rho.func==G:
-                    broad_args=tuple(a+z for a in rho.args) # summing a zero vector z to force broadcasting of constants in arguments
+                    broad_args=tuple(a+z for a in rho.args) 
                     fargs=lambdify(xl+[z],broad_args)
                     v_new[idx,i]=trunc_norm(*fargs(*np.concatenate([v_new[mask],zz[mask]],axis=1).T))
                 elif rho.func==D:
-                    vals,probs=rho.args # summing a zero vector z to force broadcasting of constants in arguments
+                    vals,probs=rho.args
                     probs=tuple(a+z for a in probs)
                     val_ar =np.broadcast_to(np.array(list(vals),ndmin=2,dtype=np.float64),(len(idx),len(vals)))
                     ff=lambdify(xl+[z],probs)
@@ -274,6 +299,17 @@ def transition_vectorized_CCS_2(v,p,xl,dc,v_new=None,p_new=None):
 
 time_pc_set=0
 def iter_transition(S,e,xl,T,N,maxe=1,eps=0.05,vers=3,transl=True,dc={},thresh=0):
+    '''
+    It returns the exact confidence interval of e with a given confidence eps:
+       - S: model describing the probabilistic program we are
+           studying.
+       - e: random variable for which we are interested in obtaining 
+            guarantees on the expected value.
+       - xl: variables involved in the considered probabilistic model.
+       - T: length of paths considered in the computation.
+       - N: number of samples for MC estimation.
+       - eps: confidence of the interval returned by the function.
+    '''
     if transl:
         S,dc=CSP2CCS(S,nil(),{},thresh)
     start_time=time.time()
@@ -310,6 +346,16 @@ def iter_transition(S,e,xl,T,N,maxe=1,eps=0.05,vers=3,transl=True,dc={},thresh=0
 
 
 def transition_vectorized_cached(v, p, xl, dc, v_new=None, p_new=None, cache=None):
+    '''
+    It implements the transition step corresponding to the Markov kernel K.
+    It is an alternative version of 'transition_vectorized_CCS', 
+    using a set 'cache' set to store recently used arguments.
+    It takes in input:
+        v: program's store.
+        p: control pointer, represented as a statement.
+        xl: variables involved in the considered probabilistic model.
+        dc: statements to be processed.
+    '''
     mask0 = np.full((p[:, 0].shape[0],), True)
     zz = np.zeros((len(v), 1))
     if v_new is not None and p_new is not None:
@@ -395,13 +441,14 @@ def transition_vectorized_cached(v, p, xl, dc, v_new=None, p_new=None, cache=Non
 
 
 
-def bern(x,e=1/2,vL=[0,1]):   # Bernoulli with success prob. e (expression)
+def bern(x,e=1/2,vL=[0,1]):   
+    '''
+    It represents Bernoulli with success prob. e (expression).
+    '''
     S=seq(drawv(x,U()),ifte(x>=e,setv(x,vL[0]),setv(x,vL[1])))
     return S
 
-def bern2(x,e=1/2,vL=[0,1]):   # Same as above, but uses discrete distribution D
-    S=drawv(x,D((0,1),(1-e,e)))   
-    return S
+
 
 
 
@@ -468,6 +515,8 @@ TrueSkill = seq(
 V,P=iter_transition(TrueSkill,skillA,[skillA, skillB, skillC,perfA1,perfB1,perfB2, perfC2,perfA3,perfC3],11,100000,vers=2)
 
 
+
+
 #------------------ Example 3: Random walks
 
 var('y u i term')
@@ -479,6 +528,7 @@ V,P=iter_transition(RW1,i>=3,[y,i,u],200,10000,eps=.005,vers=2)
 # computation of the confidence interval for the expected value of r.v. u
 RW2 = seq(drawv(u,U(0,1)), whl((y < 1)&(y>-1), seq(drawv(y, G(y, 2*u)), setv(i, i + 1))), obs(i>=3))
 V,P=iter_transition(RW2,u,[y,i,u],200,10000,eps=.005,vers=2)
+
 
 
 
