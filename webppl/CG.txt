@@ -1,0 +1,16 @@
+timeit(function(){
+var ClickGraph = function () {
+  var simAll = uniform(0,1)
+
+  map(function(x) { 
+  var sim = bernoulli ({p: simAll}) 
+  var p1=uniform(0,1) 
+  var p2=(sim)?p1:uniform(0 ,1)
+  var clickA = bernoulli ({p: p1})
+  var clickB = bernoulli ({p: p2})
+  condition(clickA == x[0]) 
+  condition(clickB == x[1])}, [[1,1,0],[1,1,0]]);  
+   return simAll }      
+var skillAlDist =Infer({method: 'rejection', samples:126490, model: ClickGraph})
+expectation(skillAlDist)
+})

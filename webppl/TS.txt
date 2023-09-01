@@ -1,0 +1,23 @@
+var TrueSkill = function(){
+  var skillA = (gaussian({mu: 1, sigma: 0.1}))
+  var skillB = (gaussian({mu: 1, sigma: 0.1}))
+  var skillC = (gaussian({mu: 1, sigma: 0.1}))
+ 
+  //first game:A vs B, A won
+  var perfA1 = gaussian({mu: skillA, sigma: 0.15})
+  var perfB1 = gaussian({mu: skillB, sigma: 0.15})
+  condition(perfA1 > perfB1   )
+
+ //second game:B vs C, B won
+  var perfB2 = gaussian({mu: skillB, sigma: 0.15})
+  var perfC2 = gaussian({mu: skillC, sigma: 0.15})
+  condition(perfB2 > perfC2)
+  
+  //third game:A vs C, A won  
+  var perfA3 = gaussian({mu: skillA, sigma: 0.15})
+  var perfC3 = gaussian({mu: skillC, sigma: 0.15})
+  condition(perfA3 > perfC3)  
+  return skillA}
+timeit(function(){
+var skillAlDist = Infer({method: 'rejection', samples: 686334, model: TrueSkill })
+expectation(skillAlDist)})

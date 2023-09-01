@@ -1,0 +1,14 @@
+timeit(function(){
+var BurglarAlarm = function () {    
+    var earthquake=bernoulli({p: .001})
+    var burglary=bernoulli({ p: 0.01 })
+    var alarm= (earthquake==true|burglary==true)
+    var phoneWorking=(earthquake==true)?bernoulli({p: .6}):bernoulli({p: .99})
+    var maryWakes=(alarm==true & earthquake==true)?bernoulli({p: .8}):(alarm==true)?(bernoulli({p: .6})):bernoulli({p: .2})
+    var called=(maryWakes==true) & (phoneWorking==true)
+    condition(called)
+    return  burglary
+}
+var skillAlDist =Infer({method: 'rejection', samples: 1011745, model: BurglarAlarm})
+expectation(skillAlDist)})
+
