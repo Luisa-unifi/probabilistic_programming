@@ -175,7 +175,7 @@ def translate_sc(S,x):
     return f"{header}\ndef f0({xargs},m):\n{tr_S}\n    return {xargs},m"
 
 
-# Functions for the computation of a posteriori statistics, specialised according to the ouptur of each model:
+# Functions for the computation of a posteriori statistics, specialised according to the output of each model:
 def compute_statistics_RW1(res,xl, e, eps, maxe):
     m=res[3][0]
     fe=lambdify(xl,e)    
