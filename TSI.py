@@ -325,6 +325,7 @@ print('IC+ lower bound term. prob.',exp, lower_prob)
 '''
 #------------------------------- Example 1: SECOND RANDOM WALK ------------------------------
 '''
+var('r y i')
 @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32)])
 def f01(r,y,i,m):
     print("Tracing")
@@ -620,7 +621,7 @@ c=0
 tr_CG=translate_sc(ClickGraph,xlist_ClickGraph)
 print(tr_CG)
 
-    
+@tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)]*8)      
 def f0(r,simAll, sim, p1, p2, clickA, clickB ,m):
     simAll=tfd.Uniform(low=r).sample()
  
