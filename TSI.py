@@ -591,26 +591,6 @@ ClickGraph = seq(
                            draw(p2, rhoU(0,1))),
                 draw(clickA, B(p1)),
                 draw(clickB, B(p2)),
-                obs(clickA>0),
-                obs(clickB>0),   
-                
-                
-                draw(sim, B(simAll)),  
-                draw(p1, rhoU(0,1)),
-                ite(sim>0, setx(p2,p1), 
-                           draw(p2, rhoU(0,1))),
-                draw(clickA, B(p1)),
-                draw(clickB, B(p2)),
-                obs(clickA==0),
-                obs(clickB==0),           
-                
-                
-                draw(sim, B(simAll)),  
-                draw(p1, rhoU(0,1)),
-                ite(sim>0, setx(p2,p1), 
-                           draw(p2, rhoU(0,1))),
-                draw(clickA, B(p1)),
-                draw(clickB, B(p2)),
                 obs(clickA==0),
                 obs(clickB==0)           
                 )
