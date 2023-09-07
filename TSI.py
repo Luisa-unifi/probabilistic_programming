@@ -684,3 +684,308 @@ maxe=1
 exp, lower_prob,conf=compute_statistics_CG(res,xl, e, eps, maxe)
 print('IC+ lower bound term. prob.',exp, lower_prob)
 '''
+
+#---------------------------------- Example 6: Monty Hall  ----------------------------
+
+'''
+var('x car guest host guest2 win')
+
+def ternary(x,pL=[1/3,1/3,1/3],vL=[0,1,2]):   
+    pL=np.cumsum(pL) 
+    S=seq( draw(x,rhoU()), ite(x<=pL[0],setx(x,vL[0]), ite(x<=pL[1],setx(x,vL[1]),setx(x,vL[2]))))
+    return S
+
+def bern(x,e=1/2,vL=[0,1]):  
+    S=seq(draw(x,rhoU()),ite(x>=e,setx(x,vL[0]),setx(x,vL[1])))
+    return S  
+    
+MH = seq(ternary(car),
+                  ternary(guest),      
+                  ite(Eq(car,0) & Eq(guest,1), setx(host,2) ,setx(host,host)),
+                  ite(Eq(car,0) & Eq(guest,2), setx(host,1),setx(host,host)),                 
+                  ite(Eq(car,1) & Eq(guest,0),setx(host,2),setx(host,host)),
+                  ite(Eq(car,1) & Eq(guest,2),setx(host,0),setx(host,host)),
+                  ite(Eq(car,2) & Eq(guest,0), setx(host,1),setx(host,host)),
+                  ite(Eq(car,2) & Eq(guest,1), setx(host,0),setx(host,host)),
+                  ite(Eq(car,0) & Eq(guest,0), seq(draw(x,rhoU()),ite(x>=0.5,setx(host,1),setx(host,2))),setx(host,host)),
+                  ite(Eq(car,1) & Eq(guest,1), seq(draw(x,rhoU()),ite(x>=0.5,setx(host,0),setx(host,2))),setx(host,host)),
+                  ite(Eq(car,2) & Eq(guest,2), seq(draw(x,rhoU()),ite(x>=0.5,setx(host,0),setx(host,1))),setx(host,host)),
+                  ite(Eq(guest,1) & Eq(host,2),setx(win,0),setx(win,win)),
+                  ite(Eq(guest,0) & Eq(host,2),setx(guest,1),setx(win,win)),
+                  ite(Eq(guest,0) & Eq(host,1),setx(win,2),setx(win,win)),
+                  ite(Eq(guest,2) & Eq(host,1),setx(win,0),setx(win,win)),                  
+                  ite(Eq(guest,1) & Eq(host,0),setx(win,2),setx(win,win)),
+                  ite(Eq(guest,2) & Eq(host,0),setx(win,1),setx(win,win)),                  
+                  ite(Eq(win,car),
+                       setx(win,1),
+                       setx(win,0)))
+
+xlist_MH='car, guest, host, win'.split(',')
+c=0
+
+@tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32)])
+def f0(r, car, guest, host, win,m):
+    car=tfd.Uniform(low=r).sample()
+    def f1(car, guest, host, win,m):
+        car=r
+        return car, guest, host, win,m
+    def f2(car, guest, host, win,m):
+        def f3(car, guest, host, win,m):
+            car=r+1
+            return car, guest, host, win,m
+        def f4(car, guest, host, win,m):
+            car=r+2
+            return car, guest, host, win,m
+        mask = car <= 0.666666666666667
+        res=tf.where(mask, tf.concat(f3(car, guest, host, win,m),axis=0), tf.concat(f4(car, guest, host, win,m),axis=0))
+        car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+        return car, guest, host, win,m
+    mask = car <= 0.333333333333333
+    res=tf.where(mask, tf.concat(f1(car, guest, host, win,m),axis=0), tf.concat(f2(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+
+   
+    guest=tfd.Uniform(low=r).sample()
+    def f7(car, guest, host, win,m):
+        guest=r
+        return car, guest, host, win,m
+    def f8(car, guest, host, win,m):
+        def f9(car, guest, host, win,m):
+            guest=r+1
+            return car, guest, host, win,m
+        def f10(car, guest, host, win,m):
+            guest=r+2
+            return car, guest, host, win,m
+        mask = guest <= 0.666666666666667
+        res=tf.where(mask, tf.concat(f9(car, guest, host, win,m),axis=0), tf.concat(f10(car, guest, host, win,m),axis=0))
+        car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+        return car, guest, host, win,m
+    mask = guest <= 0.333333333333333
+    res=tf.where(mask, tf.concat(f7(car, guest, host, win,m),axis=0), tf.concat(f8(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+    
+    def f13(car, guest, host, win,m):
+        host=r+2
+        return car, guest, host, win,m
+    def f14(car, guest, host, win,m):
+        host=host
+        return car, guest, host, win,m
+    
+    mask1 = (car==r)
+    mask2 = (guest==r+1)
+    #mask = (car==r) and (guest==r+1)
+    res=tf.where(mask1 & mask2, tf.concat(f13(car, guest, host, win,m),axis=0), tf.concat(f14(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+    
+   
+    def f16(car, guest, host, win,m):
+        host=r+1
+        return car, guest, host, win,m
+    def f17(car, guest, host, win,m):
+        host=host
+        return car, guest, host, win,m
+    mask1 = (car==r)
+    mask2 = (guest==r+2)
+    res=tf.where(mask1 & mask2, tf.concat(f16(car, guest, host, win,m),axis=0), tf.concat(f17(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+   
+    def f19(car, guest, host, win,m):
+        host=r+2
+        return car, guest, host, win,m
+    def f20(car, guest, host, win,m):
+        host=host
+        return car, guest, host, win,m
+    mask1 = (car==r+1)
+    mask2 = (guest==r)
+    res=tf.where(mask1 & mask2, tf.concat(f19(car, guest, host, win,m),axis=0), tf.concat(f20(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+   
+    def f22(car, guest, host, win,m):
+        host=r
+        return car, guest, host, win,m
+    def f23(car, guest, host, win,m):
+        host=host
+        return car, guest, host, win,m
+    mask1 = (car==r+1)
+    mask2 = (guest==r+2)
+    res=tf.where(mask1 & mask2, tf.concat(f22(car, guest, host, win,m),axis=0), tf.concat(f23(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+    
+      
+    def f25(car, guest, host, win,m):
+        host=r+1
+        return car, guest, host, win,m
+    def f26(car, guest, host, win,m):
+        host=host
+        return car, guest, host, win,m    
+    mask1 = (car==r+2)
+    mask2 = (guest==r)
+    res=tf.where(mask1 & mask2, tf.concat(f25(car, guest, host, win,m),axis=0), tf.concat(f26(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+    
+    def f28(car, guest, host, win,m):
+        host=r+0
+        return car, guest, host, win,m
+    def f29(car, guest, host, win,m):
+        host=host
+        return car, guest, host, win,m
+    mask1 = (car==r+2)
+    mask2 = (guest==r+1)
+    res=tf.where(mask1 & mask2, tf.concat(f28(car, guest, host, win,m),axis=0), tf.concat(f29(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+
+    
+    def f31(car, guest, host, win,m):
+        x=tfd.Uniform(low=r).sample()
+        def f33(car, guest, host, win,m):
+            host=r+1
+            return car, guest, host, win,m
+        def f34(car, guest, host, win,m):
+            host=r+2
+            return car, guest, host, win,m
+        mask = x >= 0.5
+        res=tf.where(mask, tf.concat(f33(car, guest, host, win,m),axis=0), tf.concat(f34(car, guest, host, win,m),axis=0))
+        car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+        return car, guest, host, win,m
+    def f32(car, guest, host, win,m):
+        host=host
+        return car, guest, host, win,m
+    mask1 = (car==r)
+    mask2 = (guest==r)
+    res=tf.where(mask1 & mask2, tf.concat(f31(car, guest, host, win,m),axis=0), tf.concat(f32(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+    
+    def f37(car, guest, host, win,m):
+        x=tfd.Uniform(low=r).sample()
+        def f39(car, guest, host, win,m):
+            host=r
+            return car, guest, host, win,m
+        def f40(car, guest, host, win,m):
+            host=r+2
+            return car, guest, host, win,m
+        mask = x >= 0.5
+        res=tf.where(mask, tf.concat(f39(car, guest, host, win,m),axis=0), tf.concat(f40(car, guest, host, win,m),axis=0))
+        car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+        return car, guest, host, win,m
+    def f38(car, guest, host, win,m):
+        host=host
+        return car, guest, host, win,m
+    mask1 = (car==r+1)
+    mask2 = (guest==r+1)
+    res=tf.where(mask1 & mask2, tf.concat(f37(car, guest, host, win,m),axis=0), tf.concat(f38(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+    
+    def f43(car, guest, host, win,m):
+        x=tfd.Uniform(low=r).sample()
+        def f45(car, guest, host, win,m):
+            host=r+0
+            return car, guest, host, win,m
+        def f46(car, guest, host, win,m):
+            host=r+1
+            return car, guest, host, win,m
+        mask = x >= 0.5
+        res=tf.where(mask, tf.concat(f45(car, guest, host, win,m),axis=0), tf.concat(f46(car, guest, host, win,m),axis=0))
+        car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+        return car, guest, host, win,m
+    def f44(car, guest, host, win,m):
+        host=host
+        return car, guest, host, win,m
+    mask1 = (car==r+2)
+    mask2 = (guest==r+2)
+    res=tf.where(mask1 & mask2, tf.concat(f43(car, guest, host, win,m),axis=0), tf.concat(f44(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+    
+    #-------------  
+    def f49(car, guest, host, win,m):
+        win=r
+        return car, guest, host, win,m
+    def f50(car, guest, host, win,m):
+        win=win
+        return car, guest, host, win,m
+    mask1 = (guest==r+1)
+    mask2 = (host==r+2)
+    res=tf.where(mask1 & mask2, tf.concat(f49(car, guest, host, win,m),axis=0), tf.concat(f50(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+    def f52(car, guest, host, win,m):
+        win=r+1
+        return car, guest, host, win,m
+    def f53(car, guest, host, win,m):
+        win=win
+        return car, guest, host, win,m
+    mask1 = (guest==r)
+    mask2 = (host==r+2)
+    res=tf.where(mask1 & mask2, tf.concat(f52(car, guest, host, win,m),axis=0), tf.concat(f53(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+    def f55(car, guest, host, win,m):
+        win=r+2
+        return car, guest, host, win,m
+    def f56(car, guest, host, win,m):
+        win=win
+        return car, guest, host, win,m
+    mask1 = (guest==r)
+    mask2 = (host==r+1)
+    res=tf.where(mask1 & mask2, tf.concat(f55(car, guest, host, win,m),axis=0), tf.concat(f56(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+    def f58(car, guest, host, win,m):
+        win=r
+        return car, guest, host, win,m
+    def f59(car, guest, host, win,m):
+        win=win
+        return car, guest, host, win,m
+    mask1 = (guest==r+2)
+    mask2 = (host==r+1)   
+    res=tf.where(mask1 & mask2, tf.concat(f58(car, guest, host, win,m),axis=0), tf.concat(f59(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+    def f61(car, guest, host, win,m):
+        win=r+2
+        return car, guest, host, win,m
+    def f62(car, guest, host, win,m):
+        win=win
+        return car, guest, host, win,m
+    mask1 = (guest==r+1)
+    mask2 = (host==r)
+    res=tf.where(mask1 & mask2, tf.concat(f61(car, guest, host, win,m),axis=0), tf.concat(f62(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+    def f64(car, guest, host, win,m):
+        win=r+1
+        return car, guest, host, win,m
+    def f65(car, guest, host, win,m):
+        win=win
+        return car, guest, host, win,m
+    mask1 = (guest==r+2)
+    mask2 = (host==r)
+    res=tf.where(mask1 & mask2, tf.concat(f64(car, guest, host, win,m),axis=0), tf.concat(f65(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+    
+    
+    def f67(car, guest, host, win,m):
+        win=r+1
+        return car, guest, host, win,m
+    def f68(car, guest, host, win,m):
+        win=r
+        return car, guest, host, win,m
+    mask = win==car
+    res=tf.where(mask, tf.concat(f67(car, guest, host, win,m),axis=0), tf.concat(f68(car, guest, host, win,m),axis=0))
+    car, guest, host, win,m = tuple(res[tf.newaxis,j] for j in range(5)) # slicing tensor res
+
+    return car, guest, host, win,m
+
+
+N=1
+rr = tf.zeros((1,N))
+bb=tf.zeros(shape=(1,N))
+m=tf.fill(dims=[1,N],value=1.0)
+start_time=time.time()
+res=f0(rr,bb,bb,bb,bb,m)
+final_time=(time.time()-start_time)
+print("TOTAL elapsed time 1 elems  %s seconds ------      " % final_time)
+
+N=10**6
+rr = tf.zeros((1,N))
+bb=tf.zeros(shape=(1,N))
+m=tf.fill(dims=[1,N],value=1.0)
+start_time=time.time()
+res=f0(rr,bb,bb,bb,bb,m)
+final_time=(time.time()-start_time)
+print("TOTAL elapsed time 10**6 elems  %s seconds -------        " % final_time)
+'''
