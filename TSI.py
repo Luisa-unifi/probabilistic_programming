@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Python prototype implementation of the vectorized MC algorithm
+Python prototype implementation of TSI, the vectorized MC algorithm
 described in 'Guaranteed inference for probabilistic programs:
 a parallelisable, small-step operational approach'([1]), Section 6.
 
-It returns guaranteed estimates for the expectation of random 
+In this file we consider the sub-language of P such that if-then-else 
+is not allowed inside the while loop.
+
+TSI returns guaranteed estimates for the expectation of random 
 variables defined by probabilistic programs, guarantees are 
 given in the form of confidence intervals.
 
@@ -81,10 +84,7 @@ The main workflow is the following:
     eps=0.005
     maxe=1
     exp, lower_prob,conf=compute_statistics(res,xl, e, eps, maxe)
-
-
-In this file we consider the sub-language of P such that if-then-else 
-is not allowed inside the while loop.  
+  
 
 Examples and experiments are at the end of the script. 
 """
