@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Python prototype implementation of the vectorized MC algorithm
 described in 'Guaranteed inference for probabilistic programs:
@@ -81,7 +82,10 @@ The main workflow is the following:
     maxe=1
     exp, lower_prob,conf=compute_statistics(res,xl, e, eps, maxe)
 
-    
+
+In this file we consider the sub-language of P such that if-then-else 
+is not allowed inside the while loop.  
+
 Examples and experiments are at the end of the script. 
 """
 
@@ -111,6 +115,8 @@ K_str=str(K)
 skip=Function('skip')
 seq=Function('seq')
 c=0
+
+
 
 def translate_seq(S,x,ind=''):
     '''
@@ -160,7 +166,7 @@ def translate_seq(S,x,ind=''):
         post=      f"m=tf.where(tf.logical_or(tf.logical_not({phi_str}) , tf.equal(m,0.0)),  m * tf.cast({psi_str},tf.float32), np.NaN)"
         return     f"{ind}{S_f}\n{ind}{def_body}\n{ind}{xargs},m=tf.while_loop(lambda *_: True, body{c1}, ({xargs},m), maximum_iterations={K_str})\n{ind}{post}"
     elif f==seq:
-        Slist=[translate_seq(Si,x,ind) for Si in args]
+        Slist=[translate_seq(Si,x,ind) for Si in args]           
         return "\n".join(Slist)            
     else:
         print("Syntax error")
@@ -175,84 +181,129 @@ def translate_sc(S,x):
     return f"{header}\ndef f0({xargs},m):\n{tr_S}\n    return {xargs},m"
 
 
-# Functions for the computation of a posteriori statistics, specialised according to the output of each model:
+
 def compute_statistics_RW1(res,xl, e, eps, maxe):
     m=res[3][0]
-    fe=lambdify(xl,e)    
-    termidx=tf.where(m==1) 
-    termW=(m[m==1]).numpy().sum()
-    liveW=tf.math.is_nan(m).numpy().sum()
+    r=res[0][0]    
+    term = (m==1.0)    
+    fail = (m==0.0)      
+    live = tf.logical_not(term|fail)
+    lt2=    term|live
+    na=live.numpy().sum()+term.numpy().sum()
+    
+    LB=r[lt2].numpy().sum()/na-eps     
+    UB=(r[term].numpy().sum()+maxe*live.numpy().sum()+10**6*eps)/(term.numpy().sum()-10**6*eps)
 
-    feW=fe((tf.gather(res[0][0], indices=termidx).numpy()).T, tf.gather(res[1][0], indices=termidx).numpy().T,
-    tf.gather(res[2][0], indices=termidx).numpy()).sum()
-       
-    exp=[(feW-eps)/(termW+liveW+eps),(feW+maxe*liveW+eps)/(termW-eps)] 
-    lower_prob=termW/(termW+liveW)
+    lower_prob=term.numpy().sum()/(term.numpy().sum()+live.numpy().sum())    
     N=m.shape[0]
-    delta = 2*np.exp(-N*eps**2/maxe)
-    conf = 1-3*delta
+    delta2 = 2*np.exp(-2*N*eps**2/maxe**2)+np.exp(-2*na*eps**2/maxe**2)
+    conf2 = 1-2*delta2
+    exp=[LB,UB]
+    return exp, lower_prob, conf2
+
+def compute_statistics_RW2(res,xl, e, eps, maxe):
+    m=res[3][0]
+    r=res[2][0]>=3
+    term = (m==1.0)    
+    fail = (m==0.0)      
+    live = tf.logical_not(term|fail)
+    lt2=    term|live
+    na=live.numpy().sum()+term.numpy().sum()
+    
+    LB=r[lt2].numpy().sum()/na-eps     
+    UB=(r[term].numpy().sum()+maxe*live.numpy().sum()+10**6*eps)/(term.numpy().sum()-10**6*eps)
+
+    lower_prob=term.numpy().sum()/(term.numpy().sum()+live.numpy().sum())    
+    N=m.shape[0]
+    delta = 2*np.exp(-N*eps**2/maxe**2)+np.exp(-na*eps**2/maxe**2)
+    conf = 1-2*delta
+    exp=[LB,UB]
     return exp, lower_prob, conf
+
 
 def compute_statistics_BA(res,xl, e, eps, maxe):
     m=res[4][0]
-    fe=lambdify(xl,e)    
-    termidx=tf.where(m==1) 
-    termW=(m[m==1]).numpy().sum() 
-    liveW=tf.math.is_nan(m).numpy().sum()
-
-    feW=fe((tf.gather(res[0][0], indices=termidx).numpy()), tf.gather(res[1][0], indices=termidx).numpy(),
-    tf.gather(res[2][0], indices=termidx).numpy(),tf.gather(res[3][0], indices=termidx).numpy()).sum()
-       
-    exp=[(feW-eps)/(termW+liveW+eps),(feW+maxe*liveW+eps)/(termW-eps)] 
-    lower_prob=termW/(termW+liveW)
     N=m.shape[0]
-    delta = 2*np.exp(-N*eps**2/maxe)
-    conf = 1-3*delta
+
+    r=res[1][0]    
+    term = (m==1.0)    
+    fail = (m==0.0)      
+    live = tf.logical_not(term|fail)
+    lt2=    term|live
+    na=live.numpy().sum()+term.numpy().sum()
+    
+    LB=r[lt2].numpy().sum()/na-eps   
+    UB=r[lt2].numpy().sum()/na+eps     
+
+    lower_prob=term.numpy().sum()/(term.numpy().sum()+live.numpy().sum())   
+    delta = 2*np.exp(-2*N*eps**2/maxe**2)+np.exp(-2*na*eps**2/maxe**2)
+    conf = 1-2*delta
+    exp=[LB,UB]
     return exp, lower_prob, conf
 
 def compute_statistics_TS(res,xl, e, eps, maxe):
     m=res[9][0]
-    fe=lambdify(xl,e)    
-    termidx=tf.where(m==1) 
-    termW=(m[m==1]).numpy().sum() 
-    liveW=tf.math.is_nan(m).numpy().sum()
-    print('number of samples-----',termW)
-
-    feW=fe((tf.gather(res[0][0], indices=termidx).numpy()), tf.gather(res[1][0], indices=termidx).numpy(),
-    tf.gather(res[2][0], indices=termidx).numpy(),tf.gather(res[3][0], indices=termidx).numpy()
-    ,tf.gather(res[4][0], indices=termidx).numpy()
-    ,tf.gather(res[5][0], indices=termidx).numpy()
-    ,tf.gather(res[6][0], indices=termidx).numpy()
-    ,tf.gather(res[7][0], indices=termidx).numpy()
-    ,tf.gather(res[8][0], indices=termidx).numpy()
-    ).sum()
-       
-    exp=[(feW-eps)/(termW+liveW+eps),(feW+maxe*liveW+eps)/(termW-eps)] 
-    lower_prob=termW/(termW+liveW)
     N=m.shape[0]
-    delta = 2*np.exp(-N*eps**2/maxe)
-    conf = 1-3*delta
+    r=res[0][0]    
+    term = (m==1.0)    
+    fail = (m==0.0)      
+    live = tf.logical_not(term|fail)   
+    lt2=    term|live
+    na=live.numpy().sum()+term.numpy().sum()
+    
+    LB=r[lt2].numpy().sum()/na-eps     
+    UB= r[lt2].numpy().sum()/na+eps   
+
+    lower_prob=term.numpy().sum()/(term.numpy().sum()+live.numpy().sum())   
+    
+    delta = 2*np.exp(-2*N*eps**2/maxe**2)+np.exp(-2*na*eps**2/maxe**2)
+    conf = 1-2*delta
+    exp=[LB,UB]
     return exp, lower_prob, conf
 
 def compute_statistics_CG(res,xl, e, eps, maxe):
     m=res[6][0]
-    fe=lambdify(xl,e)    
-    termidx=tf.where(m==1) 
-    termW=(m[m==1]).numpy().sum() 
-    liveW=tf.math.is_nan(m).numpy().sum()
-    print('number of samples-----',termW)
-
-    feW=fe((tf.gather(res[0][0], indices=termidx).numpy()), tf.gather(res[1][0], indices=termidx).numpy(),
-    tf.gather(res[2][0], indices=termidx).numpy(),tf.gather(res[3][0], indices=termidx).numpy()
-    ,tf.gather(res[4][0], indices=termidx).numpy()
-    ,tf.gather(res[5][0], indices=termidx).numpy()).sum()
-       
-    exp=[(feW-eps)/(termW+liveW+eps),(feW+maxe*liveW+eps)/(termW-eps)] 
-    lower_prob=termW/(termW+liveW)
     N=m.shape[0]
-    delta = 2*np.exp(-N*eps**2/maxe)
-    conf = 1-3*delta
+    r=res[0][0]    
+    term = (m==1.0)    
+    fail = (m==0.0)      
+    live = tf.logical_not(term|fail)   
+    lt2=    term|live
+    na=live.numpy().sum()+term.numpy().sum()
+    
+    LB=r[lt2].numpy().sum()/na-eps    
+    UB=r[lt2].numpy().sum()/na+eps     
+
+    lower_prob=term.numpy().sum()/(term.numpy().sum()+live.numpy().sum())   
+    
+    delta = 2*np.exp(-2*N*eps**2/maxe**2)+np.exp(-2*na*eps**2/maxe**2)
+    conf = 1-2*delta
+
+    exp=[LB,UB]
     return exp, lower_prob, conf
+
+def compute_statistics_MH(res,xl, e, eps, maxe):
+    m=res[4][0]
+    
+    N=m.shape[0]
+    r=res[3][0]    
+    term = (m==1.0)    
+    fail = (m==0.0)      
+    live = tf.logical_not(term|fail)   
+    lt2=    term|live
+    na=live.numpy().sum()+term.numpy().sum()
+    
+    LB=r[lt2].numpy().sum()/na-eps     
+    UB=r[lt2].numpy().sum()/na+eps     
+
+    lower_prob=term.numpy().sum()/(term.numpy().sum()+live.numpy().sum())   
+    
+    delta = 2*np.exp(-2*N*eps**2/maxe**2)+np.exp(-2*na*eps**2/maxe**2)
+    conf = 1-2*delta
+
+    exp=[LB,UB]
+    return exp, lower_prob, conf
+
 
 def compute_expected_value_approx(var, mask):
     return var[mask==1].numpy().sum()/(mask==1).numpy().sum() 
@@ -264,7 +315,6 @@ def compute_expected_value_approx(var, mask):
 #-------------------------------------  EXPERIMENTS  ------------------------------------
 #-------------------------------------------------------------------------------------------
 
-
 #------------------------------- Example 1: FIRST RANDOM WALK ------------------------------
 '''
 var('r y i')
@@ -272,22 +322,22 @@ var('r y i')
 S_s=seq(draw(r,rhoU()),whl(abs(y)<1,seq(draw(y,rhoG(y,2*r)),setx(i,i+1)),i>=3))
 xlist=['r','y','i']
 c=0
-tr_S=translate_sc(S_s,xlist)
-print(tr_S)
+#tr_S=translate_sc(S_s,xlist)
+#print(tr_S)
 
 
 #working tf definition
 @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32)])
 def f0(r,y,i,m):
     print("Tracing")
-    r = tfd.Uniform(low=r).sample()#draw(r,rho_U())
+    r = tfd.Uniform(low=r).sample()
     def body_f1(r,y,i,m):
-        y = tfd.Normal(loc=y, scale=2*r).sample()#draw(y,rho_G(y, 2*r))
+        y = tfd.Normal(loc=y, scale=2*r).sample()
         i+=1
         return r,y,i,m
     def body1(r,y,i,m):
         res = tf.where(tf.less(tf.abs(y) ,1.0) & tf.greater(m,0),tf.concat(list(body_f1(r,y,i,m)),axis=0),tf.concat((r,y,i,m),axis=0))
-        return  tuple([res[tf.newaxis,j] for j in range(4)]) # slicing tensor res 
+        return  tuple([res[tf.newaxis,j] for j in range(4)]) 
     r,y,i,m=tf.while_loop(lambda *_: True, body1, (r,y,i,m), maximum_iterations=100)
     m=tf.where(tf.logical_or(tf.logical_not(tf.less(tf.abs(y) ,1.0)) , tf.equal(m,0.0)),  m * tf.cast(tf.greater_equal(i, 3.0), tf.float32), np.NaN)
     return r,y,i,m
@@ -314,18 +364,21 @@ res=f0(rr,yy,ii,m)
 final_time=(time.time()-start_time)
 print("TOTAL elapsed time 1M elems  %s seconds -------        " % final_time)
 
+
 xl=[r,y,i]   
 e=r
 eps=0.005
 maxe=1
 exp, lower_prob,conf=compute_statistics_RW1(res,xl, e, eps, maxe)
-
-print('IC+ lower bound term. prob.',exp, lower_prob)
-
 '''
-#------------------------------- Example 1: SECOND RANDOM WALK ------------------------------
+
+
+
+#------------------------------- Example 2: SECOND RANDOM WALK ------------------------------
+
 '''
 var('r y i')
+
 @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32)])
 def f01(r,y,i,m):
     print("Tracing")
@@ -337,7 +390,7 @@ def f01(r,y,i,m):
     def body1(y,i):
         res = tf.where(tf.less(tf.abs(y) ,1.0) ,tf.concat((body_f1(y,i)),axis=0),tf.concat((y,i),axis=0))
         return  res[tf.newaxis,0],res[tf.newaxis,1]
-    y,i=tf.while_loop(lambda *_: True, body1, (y,i), maximum_iterations=100)
+    y,i=tf.while_loop(lambda *_: True, body1, (y,i), maximum_iterations=5)
     m=tf.where(tf.greater_equal(tf.abs(y) ,1.0) ,   m*tf.cast(True,tf.float32), np.NaN)
     return r,y,i,m
 
@@ -361,17 +414,16 @@ m = tf.constant(1.0,shape=(1,N))
 start_time=time.time()
 res=f01(rr,yy,ii,m)
 final_time=(time.time()-start_time)
-print("TOTAL elapsed time 1M elems  %s seconds -------        " % final_time)
+print("TOTAL elapsed time 10**6 elems  %s seconds -------        " % final_time)
 
 
 xl=[r,y,i]    
 e=i>=3
 eps=0.005
 maxe=1
-exp, lower_prob,conf=compute_statistics_RW1(res,xl, e, eps, maxe)
-print('IC+ lower bound term. prob.',exp, lower_prob)
-
+exp, lower_prob,conf=compute_statistics_RW2(res,xl, e, eps, maxe)
 '''
+
 #--------------------------------------- Example 3: Burglar Alarm -----------------------------
 '''
 var('earthquake burglary phoneWorking maryWakes alarm called')
@@ -392,8 +444,8 @@ BA = seq(draw(earthquake,B(0.001)),
 
 xlist_BA='earthquake, burglary, phoneWorking, maryWakes'.split(',')
 c=0
-tr_BA=translate_sc(BA,xlist_BA)
-print(tr_BA)
+#tr_BA=translate_sc(BA,xlist_BA)
+#print(tr_BA)
 
 
 
@@ -435,6 +487,7 @@ def f0(earthquake, burglary, phoneWorking, maryWakes,m,p1,p2,p3,p4,p5,p6,p7):
     return earthquake, burglary, phoneWorking, maryWakes,m
 
 
+
 # Warm up
 N=1
 bb=tf.zeros(shape=(1,N))
@@ -453,7 +506,6 @@ final_time=(time.time()-start_time)
 print("TOTAL elapsed time 1 elems  %s seconds -------        " % final_time)
 
 
-# actual execution
 N=10**6
 bb=tf.zeros(shape=(1,N))
 m=tf.fill(dims=[1,N],value=1.0)
@@ -469,7 +521,8 @@ p7=tf.constant(.2 , shape=shp)
 start_time=time.time()
 res=f0(bb,bb,bb,bb,m,p1,p2,p3,p4,p5,p6,p7)
 final_time=(time.time()-start_time)
-print("TOTAL elapsed time 1M elems  %s seconds -------        " % final_time)
+print("TOTAL elapsed time 10**6 elems  %s seconds -------        " % final_time)
+
 compute_expected_value_approx(res[1][0], res[4][0])
 
 var('earthquake, burglary, phoneWorking, maryWakes')
@@ -478,7 +531,6 @@ e=burglary
 eps=0.005
 maxe=1
 exp, lower_prob,conf=compute_statistics_BA(res,xl, e, eps, maxe)
-print('IC+ lower bound term. prob.',exp, lower_prob)
 '''
 
 #--------------------------------------- Example 4: TrueSkill -----------------------------
@@ -504,12 +556,13 @@ TS = seq(draw(skillA,G(100/scale,10/scale)),
 
 xlist_TS='skillA, skillB, skillC, perfA1, perfB1, perfB2, perfC2, perfA3, perfC3'.split(',')
 c=0
-tr_TS=translate_sc(TS,xlist_TS)
-print(tr_TS)
+#tr_TS=translate_sc(TS,xlist_TS)
+#print(tr_TS)
 
 # working TF function definition
 @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32)]+[tf.TensorSpec(shape=None, dtype=tf.float32)]*3)
 def f0(skillA, skillB, skillC, perfA1, perfB1, perfB2, perfC2, perfA3, perfC3,m,p1,p2,p3):
+    print("Tracing")
     skillA=tfd.Normal(loc=p1, scale=p2).sample() 
     skillB=tfd.Normal(loc=p1, scale=p2).sample()
     skillC=tfd.Normal(loc=p1, scale=p2).sample()
@@ -523,6 +576,7 @@ def f0(skillA, skillB, skillC, perfA1, perfB1, perfB2, perfC2, perfA3, perfC3,m,
     perfC3=tfd.Normal(loc=skillC, scale=p3).sample()
     m = m * tf.cast((perfA3-perfC3>0),tf.float32)
     return skillA, skillB, skillC, perfA1, perfB1, perfB2, perfC2, perfA3, perfC3,m
+
 
 # Warm up;
 N=1
@@ -548,20 +602,21 @@ p3=0.15+tf.zeros(shape=(1,N))
 start_time=time.time()
 res=f0(bb,bb,bb,bb,bb,bb,bb,bb,bb,m,p1,p2,p3)
 final_time=(time.time()-start_time)
-print("TOTAL elapsed time 1M elems  %s seconds -------        " % final_time)
+print("TOTAL elapsed time 10**6 elems  %s seconds -------        " % final_time)
+
 compute_expected_value_approx(res[0], res[9])
+
 
 var('skillA, skillB, skillC, perfA1, perfB1, perfB2, perfC2, perfA3, perfC3')
 xl=[skillA, skillB, skillC, perfA1, perfB1, perfB2, perfC2, perfA3, perfC3]   
 e=skillA
 eps=0.005
-maxe=1
+maxe=1 #0.6
 exp, lower_prob,conf=compute_statistics_TS(res,xl, e, eps, maxe)
-print('IC+ lower bound term. prob.',exp, lower_prob)
 '''
 
-
 #--------------------------------------- Example 5: ClickGraph  ----------------------------
+
 '''
 var('simAll, sim, p1, p2, clickA, clickB')
 ClickGraph = seq(
@@ -591,6 +646,26 @@ ClickGraph = seq(
                            draw(p2, rhoU(0,1))),
                 draw(clickA, B(p1)),
                 draw(clickB, B(p2)),
+                obs(clickA>0),
+                obs(clickB>0),   
+                
+                
+                draw(sim, B(simAll)),  
+                draw(p1, rhoU(0,1)),
+                ite(sim>0, setx(p2,p1), 
+                           draw(p2, rhoU(0,1))),
+                draw(clickA, B(p1)),
+                draw(clickB, B(p2)),
+                obs(clickA==0),
+                obs(clickB==0),           
+                
+                
+                draw(sim, B(simAll)),  
+                draw(p1, rhoU(0,1)),
+                ite(sim>0, setx(p2,p1), 
+                           draw(p2, rhoU(0,1))),
+                draw(clickA, B(p1)),
+                draw(clickB, B(p2)),
                 obs(clickA==0),
                 obs(clickB==0)           
                 )
@@ -598,11 +673,12 @@ ClickGraph = seq(
 
 xlist_ClickGraph='simAll, sim, p1, p2, clickA, clickB '.split(',')
 c=0
-tr_CG=translate_sc(ClickGraph,xlist_ClickGraph)
-print(tr_CG)
+#tr_CG=translate_sc(ClickGraph,xlist_ClickGraph)
+#print(tr_CG)
 
-@tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)]*8)      
+@tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)]*8)  
 def f0(r,simAll, sim, p1, p2, clickA, clickB ,m):
+    print("Tracing")
     simAll=tfd.Uniform(low=r).sample()
  
     sim=tfd.Bernoulli(dtype=tf.float32,probs=simAll).sample()
@@ -655,7 +731,6 @@ def f0(r,simAll, sim, p1, p2, clickA, clickB ,m):
     m = m * tf.cast((clickB < 1),tf.float32)
     return simAll, sim, p1, p2, clickA, clickB ,m
 
-
 N=1
 rr = tf.zeros((1,N))
 bb=tf.zeros(shape=(1,N))
@@ -673,7 +748,6 @@ start_time=time.time()
 res=f0(rr,bb,bb,bb,bb,bb,bb,m)
 final_time=(time.time()-start_time)
 print("TOTAL elapsed time 10*6 elems  %s seconds -------        " % final_time)
-compute_expected_value_approx(res[0], res[6])
 
 
 var('simAll, sim, p1, p2, clickA, clickB ,m')
@@ -682,11 +756,9 @@ e=simAll
 eps=0.005
 maxe=1
 exp, lower_prob,conf=compute_statistics_CG(res,xl, e, eps, maxe)
-print('IC+ lower bound term. prob.',exp, lower_prob)
 '''
 
 #---------------------------------- Example 6: Monty Hall  ----------------------------
-
 '''
 var('x car guest host guest2 win')
 
@@ -971,6 +1043,7 @@ def f0(r, car, guest, host, win,m):
     return car, guest, host, win,m
 
 
+
 N=1
 rr = tf.zeros((1,N))
 bb=tf.zeros(shape=(1,N))
@@ -980,6 +1053,8 @@ res=f0(rr,bb,bb,bb,bb,m)
 final_time=(time.time()-start_time)
 print("TOTAL elapsed time 1 elems  %s seconds ------      " % final_time)
 
+
+
 N=10**6
 rr = tf.zeros((1,N))
 bb=tf.zeros(shape=(1,N))
@@ -988,4 +1063,13 @@ start_time=time.time()
 res=f0(rr,bb,bb,bb,bb,m)
 final_time=(time.time()-start_time)
 print("TOTAL elapsed time 10**6 elems  %s seconds -------        " % final_time)
+
+
+
+var('car guest host guest2 win')
+xl=[car,guest,host, win]   
+e=win
+eps=0.005
+maxe=1
+exp, lower_prob,conf=compute_statistics_MH(res,xl, e, eps, maxe)
 '''
