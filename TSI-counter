@@ -1,0 +1,294 @@
+'''
+Python prototype implementation of the vectorized MC algorithm
+described in Fig. 2 in 'Guaranteed inference for probabilistic programs:
+a parallelisable, small-step operational approach'([1]).
+
+
+Translation TT: P_0-->TF. 
+The function defined by TT must be called with input arguments x, m, t that are (1,N)-dimensional tensors filled with
+0, NaN and 1, respectively.
+The auxiliary function T: PPL-->TF is defined by structural induction on the term S. 
+
+    T(nil)     =            return x,TRUE,t
+    
+    T(fail)     =           return x,FALSE,t
+    
+    T(xi=g.S)=              t=t+1
+                            xi = g(x)
+                            T(S)
+                  
+    [xi<-G.S] =             t=t+1
+                            G(x).sample()
+                            T(S)
+                                   
+    [if phi then S1 else S2] =  
+                            TT(S1)
+                            TT(S2)
+                            x,m,t' = tf.where(phi, { f_S1(x,m,t) } , { f_S2(x,m,t) } )
+                            t = tf.where(t==t’,t+1,t’)
+                            return x,m,t
+      
+    [while phi S, psi] =     TT(S1)
+                             TT(S2)
+                             def fbody(x,mask,t):
+                                 x,mask,t = tf.where(phi(x)&(mask!=False)&(t<t0),{f_S1 (x,mask,t)},{x,mask,t})
+                                 return x,mask,t
+                             fcond = lambda x,mask,t: Any(phi(x)&(mask!=False)&(t<t0))
+                             x, mask, t = tf.while_loop(fcond, fbody, (x,mask,t))
+                             x’,mask’,t’ = f_S2 (x,mask,t+1)
+                             x,mask’,t = tf.where(not(phi(x))&(t<t0)&(mask!=False),{x’,mask’,t’},{x,NAN,t})
+                             mask = tf.where(mask!=False,mask’,False)
+                             return x,mask,t  
+    
+    TT(S) =                 def f_S(x,m,t):
+                                T(S)
+
+Notation. TRUE (resp. FALSE, NAN) denote the (1, N ) tensor filled with
+True (resp. False, NaN). We use {...} to denote concatenation of tensors x,mask,t = x1,...,xm,mask,t along the
+axis 0: assuming each of xi,mask,t is a tensor of dimension (1, N ), then {x,mask,t} returns a tensor of dimensions
+(m+ 2, N ). Likewise, the left-hand side of an assignment, x,m,t = tf.where(...) actually denotes slicing of the tensor
+resulting from tf.where(...) into m + 2 (1, N )-tensors, which are then assigned to the variables x1,...,xm,mask,t.
+In actual TF syntax, {...} corresponds to using tf.concat(), and x,m,t = tf.where(...) to suitable tensor slicing
+operations. Any(b), for b a tensor of booleans, is the scalar boolean value obtained by OR-ing all elements in b. The usual
+Python’s rules to broadcast scalars to whole tensors apply, as well as those on boolean masking of tensors.
+
+Workflow.
+The function f_S defined by T(S) is called with input arguments x,mask,t where x = x1,...,xm: here xi,mask,t are tensors of shape
+(1, N ), filled with 0, NaN and 1, respectively. x,mask,t=f_S(x,mask,t) computes N i.i.d. samplings stored in x, and
+masks mask and t, to be used for selecting instances that are actually live/terminated/failed at the specified time t0, and
+calculate estimations of [S]t0 f_t0 and [[S]]f .
+
+
+Example assuming m = 1, hence x is x1. 
+Compute est, the MC estimation (12) of S]t0 f_t0, assuming f is the lifting of ℎ.
+
+x1=tf.fill(0,shape=(1,N))
+mask=tf.fill(NaN,shape=(1,N))
+t=tf.fill(1,shape=(1,N))
+TT(S)
+x1,mask,t=f𝑆(x1,mask,t)
+term = (mask==True) & (t<=t0) # mask selecting terminated instances at time t0
+est = sum(h(x1[term]))/N
+'''
+
+from  sympy import *
+import numpy as np
+import time
+import tensorflow as tf
+import tensorflow_probability as tfp
+tfd = tfp.distributions
+
+nil=Function('nil')
+fail=Function('fail')
+setx=Function('setx')
+draw=Function('draw')
+obs=Function('obs')
+ite=Function('ite')
+whl=Function('whl')
+
+rho=Function('rho')    # generic density
+rhoU=Function('rhoU')  # uniform density in [0,1]
+rhoG=Function('rhoG')  # genric Gaussian density
+B=Function('B')        # Bernoulli distribution
+g=Function('g') # generic function for assignments
+
+K=10  # n. of iterations for tf.while_loop
+K_str=str(K)
+
+
+
+c=0
+def translate_S(S,x,ind=''):   # function [.]
+    global c
+    xargs=','.join(x)
+    f=S.func
+    args=S.args
+    if f == nil:
+        return f"{ind}return {xargs},TT,t"
+    if f == fail:
+        return f"{ind}return {xargs},FF,t"
+    elif f == setx:
+        xi,g,S1=args
+        f1=translate_S(S1,x,ind)
+        return f"{ind}t=t+1\n{ind}{str(xi)}={str(g)}\n{f1}"
+    elif f == draw:
+        xi,rho,S1=args
+        f1=translate_S(S1,x,ind)
+        return f"{ind}t=t+1\n{ind}{str(xi)}={str(rho)}.sample()\n{f1}"
+    elif f== obs:    
+        phi, S1 = args
+        return translate_S(ite(phi,S1,fail()),x,ind)
+        #return f"{ind}m = m * tf.cast({str(phi)},tf.float32)\n{f1}"
+    elif f==ite:
+        c=c+1
+        c1=str(c)
+        c=c+1
+        c2=str(c+1)
+        phi, S1, S2 = args
+        f1 = translate_S(S1,x,ind+'    ')
+        f2 = translate_S(S2,x,ind+'    ')
+        phi_str=str(phi)
+        return ind+f"def f{c1}({xargs},m,t):\n{f1}\n{ind}def f{c2}({xargs},m,t):\n{f2}\n{ind}mask0 = ({phi_str})\n{ind}res=tf.where(mask0, tf.concat(f{c1}({xargs},m,t),axis=0), tf.concat(f{c2}({xargs},m,t),axis=0))\n{ind}t1=res[tf.newaxis,-1]\n{ind}t=tf.where(t==t1,t+1,t1)\n{ind}return tuple(res[tf.newaxis,j] for j in range({str(len(x)+1)}))+(t,) # slicing tensor res"
+    elif f==whl:
+        c=c+1
+        xargs_new='_new,'.join(x)+'_new'
+        phi, S1, S2 = args
+        phi_str=str(phi)
+        #psi_str=str(psi)
+        c1=str(c)
+        S1_tr = translate_S(S1,x,ind+'    ')
+        c=c+1
+        c2=str(c)
+        S2_tr = translate_S(S2,x,ind+'    ')
+        S1_f=      f"def f{c1}({xargs},m,t):\n{S1_tr}"
+        S2_f=      f"def f{c2}({xargs},m,t):\n{S2_tr}"
+        def_body = f"def fbody{c1}({xargs},m,t):\n{ind}    res = tf.where(({phi_str})&(m!=0)&(t<t0),tf.concat(f{c1}({xargs},m,t),axis=0),tf.concat(({xargs},m,t),axis=0))\n{ind}    return  tuple([res[tf.newaxis,j] for j in range({str(len(x)+2)})]) # slicing tensor res "
+        fcond =    f"fcond{c1} = lambda {xargs},m,t : tf.reduce_any(({phi_str})&(m!=0)&(t<t0))"
+        WL    =    f"{xargs},m,t=tf.while_loop(fcond{c1}, fbody{c1}, ({xargs},m,t))"
+        S2f   =    f"{xargs_new},m_new,t_new=f{c2}({xargs},m,t)"
+        post1 =    f"res = tf.where((tf.logical_not({phi_str}))&(t<t0)&(m!=0),tf.concat(({xargs_new},m_new,t_new),axis=0),tf.concat(({xargs},NAN,t),axis=0))"
+        post1b=    f"{xargs},m_new,t=tuple([res[tf.newaxis,j] for j in range(len(x)+2)]) # slicing tensor res"
+        post2 =    "m = tf.where((m!=0),  m_new,FF)"
+        ret   =    f"return {xargs},m,t"
+        return     f"{ind}{S1_f}\n{ind}{S2_f}\n{ind}{def_body}\n{ind}{fcond}\n{ind}{WL}\n{ind}{S2f}\n{ind}{post1}\n{ind}{post1b}\n{ind}{post2}\n{ind}{ret}"
+    else:
+        print("Syntax error")
+        return None
+    
+    
+def translate(S,x):    # function [[.]]
+    xargs=','.join(x)
+    tr_S = translate_S(S,x,ind='    ')
+    arg_str=','.join(["tf.TensorSpec(shape=None, dtype=tf.float32)"]*(len(x)+6))
+    header = f"@tf.function(input_signature=[{arg_str}])"
+    return f"{header}\ndef f0({xargs},m,t,FF,TT,NAN,t0):\n{tr_S}"
+
+
+# Workflow
+
+'''
+var('r y i')
+S=draw(r,rhoU(),whl(abs(y)<1,draw(y,rhoG(y,2*r),setx(i,i+1,nil())),obs(i>=3,nil())) )
+c=0
+xlist=['r','y','i']
+tr_S=translate(S,xlist)
+print(tr_S)
+'''
+
+# will print the following
+
+'''
+@tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32)])
+def f0(r,y,i,m,t,FF,TT,NAN,t0):
+    t=t+1
+    r=rhoU().sample()
+    def f1(r,y,i,m,t):
+        t=t+1
+        y=rhoG(y, 2*r).sample()
+        t=t+1
+        i=i + 1
+        return r,y,i,TT,t
+    def f2(r,y,i,m,t):
+        def f3(r,y,i,m,t):
+            return r,y,i,TT,t
+        def f5(r,y,i,m,t):
+            return r,y,i,FF,t
+        mask0 = (i >= 3)
+        res=tf.where(mask0, tf.concat(f3(r,y,i,m,t),axis=0), tf.concat(f5(r,y,i,m,t),axis=0))
+        t1=res[tf.newaxis,-1]
+        t=tf.where(t==t1,t+1,t1)
+        return tuple(res[tf.newaxis,j] for j in range(4))+(t,) # slicing tensor res
+    def fbody1(r,y,i,m,t):
+        res = tf.where((Abs(y) < 1)&(m!=0)&(t<t0),tf.concat(f1(r,y,i,m,t),axis=0),tf.concat((r,y,i,m,t),axis=0))
+        return  tuple([res[tf.newaxis,j] for j in range(5)]) # slicing tensor res 
+    fcond1 = lambda r,y,i,m,t : tf.reduce_any((Abs(y) < 1)&(m!=0)&(t<t0))
+    r,y,i,m,t=tf.while_loop(fcond1, fbody1, (r,y,i,m,t))
+    r_new,y_new,i_new,m_new,t_new=f2(r,y,i,m,t+1)
+    res = tf.where((tf.logical_not(Abs(y) < 1))&(t<t0)&(m!=0),tf.concat((r_new,y_new,i_new,m_new,t_new),axis=0),tf.concat((r,y,i,NAN,t),axis=0))
+    r,y,i,m_new,t=tuple([res[tf.newaxis,j] for j in range(len(r,y,i)+2)]) # slicing tensor res
+    m = tf.where((m!=0),  m_new,FF)
+    return r,y,i,m,t
+'''
+
+# This can be transformed (manually) in the following working tf function definition:
+
+
+@tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32),tf.TensorSpec(shape=None, dtype=tf.float32)])
+def f0(r,y,i,m,t,FF,TT,NAN,t0):
+    print("Tracing")
+    t=t+1
+    r = tfd.Uniform(low=r).sample()#r=rhoU().sample()
+    def f1(r,y,i,m,t):
+        t=t+1
+        y = tfd.Normal(loc=y, scale=2*r).sample()#draw(y,rho_G(y, 2*r))
+        t=t+1
+        i=i + 1
+        return r,y,i,TT,t
+    def f2(r,y,i,m,t):
+        def f3(r,y,i,m,t):
+            return r,y,i,TT,t
+        def f5(r,y,i,m,t):
+            return r,y,i,FF,t
+        mask0 = (i >= 3)
+        res=tf.where(mask0, tf.concat(f3(r,y,i,m,t),axis=0), tf.concat(f5(r,y,i,m,t),axis=0))
+        t1=res[tf.newaxis,-1]
+        t=tf.where(t==t1,t+1,t1)
+        return tuple(res[tf.newaxis,j] for j in range(4))+(t,) # slicing tensor res
+    def fbody1(r,y,i,m,t):
+        res = tf.where((tf.abs(y) < 1)&(m!=0)&(t<t0),tf.concat(f1(r,y,i,m,t),axis=0),tf.concat((r,y,i,m,t),axis=0))
+        return  tuple([res[tf.newaxis,j] for j in range(5)]) # slicing tensor res 
+    fcond1 = lambda r,y,i,m,t : tf.reduce_any((tf.abs(y) < 1)&(m!=0)&(t<t0))
+    r,y,i,m,t=tf.while_loop(fcond1, fbody1, (r,y,i,m,t))
+    r_new,y_new,i_new,m_new,t_new=f2(r,y,i,m,t+1)
+    res = tf.where((tf.logical_not(tf.abs(y) < 1))&(t<t0)&(m!=0),tf.concat((r_new,y_new,i_new,m_new,t_new),axis=0),tf.concat((r,y,i,NAN,t),axis=0))
+    r,y,i,m_new,t=tuple([res[tf.newaxis,j] for j in range(5)]) # slicing tensor res
+    m = tf.where((m!=0),  m_new,FF)
+    return r,y,i,m,t
+
+
+# Usage:
+   
+''' 
+N=1  # warmup
+rr = tf.zeros((1,N))
+yy = tf.zeros((1,N))
+ii = tf.zeros((1,N))
+m =  tf.constant(np.NaN,shape=(1,N))
+tt = tf.ones((1,N))
+FF = tf.zeros((1,N))
+TT = tf.ones((1,N))
+NAN = tf.constant(np.NaN,shape=(1,N))
+t0 = tf.constant(30.0,shape=(1,N))   # t0=30
+start_time=time.time()
+res=f0(rr,yy,ii,m,tt,FF,TT,NAN,t0)
+final_time=(time.time()-start_time)
+print("TOTAL elapsed time 1 elems  %s seconds -------        " % final_time)
+
+N=10**6  # actual execution
+rr = tf.zeros((1,N))
+yy = tf.zeros((1,N))
+ii = tf.zeros((1,N))
+m =  tf.constant(np.NaN,shape=(1,N))
+tt = tf.ones((1,N))
+FF = tf.zeros((1,N))
+TT = tf.ones((1,N))
+NAN = tf.constant(np.NaN,shape=(1,N))
+t0 = tf.constant(30.0,shape=(1,N))
+start_time=time.time()
+res=f0(rr,yy,ii,m,tt,FF,TT,NAN,t0)
+final_time=(time.time()-start_time)
+print("TOTAL elapsed time 1M elems  %s seconds -------        " % final_time)
+
+# Es. [[S]]f, with f = value of r in correctly terminated states, 0 elsewhere.
+
+mask = res[3]
+r_fin= res[0]
+term = (mask==1.0) & (tt<=t0)     # mask for terminated instances at time t0
+fail = (mask==0.0) & (tt<=t0)     # mask for failed instances at time t0
+live = tf.logical_not(term|fail)  # mask for live instances at time t0 
+
+eps=0.005
+
+LB=sum((r_fin[term].numpy())-eps)/(live.numpy()[0].sum() + term.numpy()[0].sum()+2*eps)     # estimated lower bound of [[S]]f (cf. eq. (8) in paper)
+UB=(sum(r_fin[term].numpy()) + live.numpy()[0].sum() +2*eps)/(term.numpy()[0].sum()-eps)    # estimated upper bound of [[S]]f (cf. eq. (8) in paper)
+'''
