@@ -247,8 +247,10 @@ def f0(r,y,i,m,t,FF,TT,NAN,t0):
 
 
 # Usage:
+
+# Usage:
    
-''' 
+'''
 N=1  # warmup
 rr = tf.zeros((1,N))
 yy = tf.zeros((1,N))
@@ -286,9 +288,11 @@ r_fin= res[0]
 term = (mask==1.0) & (tt<=t0)     # mask for terminated instances at time t0
 fail = (mask==0.0) & (tt<=t0)     # mask for failed instances at time t0
 live = tf.logical_not(term|fail)  # mask for live instances at time t0 
-
+maxe=1.0
 eps=0.005
+lt2=    term|live
+na=live.numpy().sum()+term.numpy().sum()
 
-LB=sum((r_fin[term].numpy())-eps)/(live.numpy()[0].sum() + term.numpy()[0].sum()+2*eps)     # estimated lower bound of [[S]]f (cf. eq. (8) in paper)
-UB=(sum(r_fin[term].numpy()) + live.numpy()[0].sum() +2*eps)/(term.numpy()[0].sum()-eps)    # estimated upper bound of [[S]]f (cf. eq. (8) in paper)
+LB=r_fin[lt2].numpy().sum()/na-eps    
+UB=(r_fin[term].numpy().sum()+maxe*live.numpy().sum()+10**6*eps)/(term.numpy().sum()-10**6*eps)
 '''
