@@ -4,8 +4,8 @@ Python prototype implementation of TSI, the vectorized MC algorithm
 described in 'Guaranteed inference for probabilistic programs:
 a parallelisable, small-step operational approach'([1]), Section 6.
 
-In this file we consider the sub-language of P such that if-then-else 
-is not allowed inside the while loop.
+In this file we consider a simplified translation T that can be applied 
+for statements S of P_0 that rule out either 'while' or 'if-then-else'.
 
 TSI returns guaranteed estimates for the expectation of random 
 variables defined by probabilistic programs, guarantees are 
