@@ -293,6 +293,6 @@ eps=0.005
 lt2=    term|live
 na=live.numpy().sum()+term.numpy().sum()
 
-LB=r_fin[lt2].numpy().sum()/na-eps    
-UB=(r_fin[term].numpy().sum()+maxe*live.numpy().sum()+10**6*eps)/(term.numpy().sum()-10**6*eps)
+LB=r_fin[lt2].numpy().sum()/na-eps  
+UB=(r_fin[term].numpy().sum()+maxe*live.numpy().sum()+N*eps)/(term.numpy().sum()-N*eps)
 '''
